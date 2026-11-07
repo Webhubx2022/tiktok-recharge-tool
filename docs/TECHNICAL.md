@@ -50,8 +50,13 @@
 
 ### استخراج رابط QR (`qr.js`)
 
-1. **الأساسي:** `webContents.debugger` (بروتوكول DevTools) مع `Network.enable`. عند وصول رد `…/passport/web/get_qrcode/` يُقرأ `data.qrcode_index_url` عبر `Network.getResponseBody`.
-2. **الاحتياطي:** كل 2.5 ثانية تُلتقط الصفحة وتُقرأ بـ `jsQR` إذا لم يصل رابط من الـ API.
+الرابط المُرسل للعميل هو **نفس الرابط المرسوم داخل الـ QR** (`https://www.tiktok.com/t/…`):
+
+1. **الأساسي:** `webContents.debugger` (بروتوكول DevTools) مع `Network.enable`.
+   - رد `…/passport/web/get_qrcode/` يعطي `token` للرمز الجديد. الأداة تحفظ الـ token وتلغي أي رابط قديم.
+   - الصفحة بعدها تستدعي `/shorten/`، والرد فيه `data[].short_url` و`target`. تُعتمد `short_url` فقط إذا كان `target` فيه نفس الـ token.
+   - ⚠️ لا تستخدم `qrcode_index_url` من رد `get_qrcode`: هذا الرابط ينقصه `app_type=m` و`client_secret` الموجودان في رابط الـ QR الفعلي.
+2. **الاحتياطي:** كل 2.5 ثانية تُلتقط الصفحة وتُقرأ بـ `jsQR` إذا لم يصل رابط من الـ API. بعد صدور رمز جديد تنتظر 3 ثوانٍ قبل القراءة، حتى لا تقرأ صورة الرمز القديم.
 3. **الحالة:** من ردود `…/check_qrconnect/` (`new` / `scanned` / `confirmed` / `expired`). تيك توك يستعلم من 3 مناطق معاً (us / eu / sg)، والمنطقة الأصلية للحساب فقط تعرف أن العميل مسح الرمز. لذلك الحالة تتقدم فقط ولا ترجع للخلف، و`expired` لا تُعتمد إلا إذا لم تأتِ حالة حيّة من أي منطقة لمدة 5 ثوانٍ. عند الانتهاء الفعلي تُعاد تحميل الصفحة.
 4. إذا لم يظهر رابط خلال 20 ثانية تُعاد تحميل الصفحة (حتى مرتين) — `scheduleQrRetry`.
 
@@ -158,6 +163,6 @@ npx @electron/fuses read --app "dist/win-unpacked/TT Recharge.exe"
 |---|---|
 | رابط صفحة QR (`/login/qrcode`) وصفحة الشحن (`/coin`) | `LOGIN_URL` و`COIN_URL` في `main.js` |
 | أسماء كوكيز الدخول | `AUTH_COOKIES` في `sessions.js` |
-| مسارات `get_qrcode` / `check_qrconnect` والحقل `qrcode_index_url` | `qr.js` |
+| مسارات `get_qrcode` / `shorten` / `check_qrconnect` والحقول `token` و`short_url` و`target` | `qr.js` |
 | نص «اكتمل الشراء» وصيغة عدد العملات | `src/preload/tiktok.js` |
 | أسماء خانات البطاقة في نموذج الدفع | `RX` في `cardfill.js` |

@@ -1,9 +1,19 @@
-// Extracts the QR-login link of a TikTok login page.
-// Primary: read TikTok's own passport API responses through the DevTools protocol.
+// Extracts the QR-login link of a TikTok login page — the same link that is
+// drawn inside the QR, so the customer gets exactly what a phone scan would give.
+//
+// How TikTok builds it: get_qrcode returns a token (and a bare qrcode_index_url
+// that is NOT what the page shows), then the page calls /shorten/ with the full
+// scan link (which adds app_type and a client_secret) and draws the resulting
+// short link https://www.tiktok.com/t/… in the QR.
+//
+// Primary: read get_qrcode + /shorten/ through the DevTools protocol and keep the
+// short link whose target carries the current token.
 // Fallback: decode the QR drawn on screen with jsQR.
 const jsQR = require('jsqr');
 
-const QR_API = /\/passport\/web\/(get_qrcode|check_qrconnect)\//;
+const QR_API = /\/passport\/web\/(get_qrcode|check_qrconnect)\/|\/shorten\//;
+// After a new QR is issued the old image may stay on screen for a moment.
+const SCAN_GRACE_MS = 3000;
 const SCAN_INTERVAL_MS = 2500;
 const RANK = { new: 0, scanned: 1, confirmed: 2 };
 
@@ -20,6 +30,10 @@ class QrWatcher {
     this.timer = null;
     this.scanning = false;
     this.lastAlive = 0;
+    this.token = null; // token of the QR currently issued by get_qrcode
+    this.urlToken = null; // token the shown link belongs to (null for a screen scan)
+    this.shortByToken = new Map();
+    this.scanNotBefore = 0;
     this._onMessage = this._onMessage.bind(this);
   }
 
@@ -38,6 +52,9 @@ class QrWatcher {
     this.url = null;
     this.status = null;
     this.source = null;
+    this.token = null;
+    this.urlToken = null;
+    this.scanNotBefore = 0;
     this.pending.clear();
   }
 
@@ -59,13 +76,14 @@ class QrWatcher {
     } catch { /* ignore */ }
   }
 
-  _setUrl(url, source) {
+  _setUrl(url, source, token = null) {
     if (!/^https:\/\/([a-z0-9-]+\.)*tiktok\.com\//i.test(url)) return;
     if (url === this.url) return;
     // A link read from the API is authoritative; a screen scan never replaces it
     // with an older QR still visible on the page.
     if (source === 'scan' && this.source === 'cdp') return;
     this.url = url;
+    this.urlToken = token;
     this.source = source;
     this.status = 'new';
     this.lastAlive = Date.now();
@@ -105,18 +123,57 @@ class QrWatcher {
       });
       const text = res.base64Encoded ? Buffer.from(res.body, 'base64').toString('utf8') : res.body;
       const data = (JSON.parse(text) || {}).data || {};
-      if (url.includes('get_qrcode') && data.qrcode_index_url) this._setUrl(data.qrcode_index_url, 'cdp');
-      if (url.includes('check_qrconnect') && data.status) this._setStatus(String(data.status));
+      if (url.includes('get_qrcode')) this._onNewQr(data);
+      else if (url.includes('/shorten/')) this._onShorten(data);
+      else if (url.includes('check_qrconnect') && data.status) this._setStatus(String(data.status));
     } catch {
       // Body no longer available (page navigated) or not JSON: ignore.
     }
   }
 
+  // A new QR replaces the old one: drop the old link so it can't be sent.
+  // The two responses can be processed in either order, so a short link that
+  // arrived first is kept in shortByToken and picked up here.
+  _onNewQr(data) {
+    const token = tokenOf(data.qrcode_index_url) || data.token;
+    if (!token || token === this.token) return;
+    this.token = token;
+    this.scanNotBefore = Date.now() + SCAN_GRACE_MS;
+    const known = this.shortByToken.get(token);
+    if (known) {
+      this._setUrl(known, 'cdp', token);
+    } else if (this.url && this.urlToken !== token) {
+      this.url = null;
+      this.urlToken = null;
+      this.source = null;
+      this.status = null;
+      this.onChange();
+    }
+  }
+
+  _onShorten(data) {
+    const items = Array.isArray(data) ? data : [data];
+    for (const item of items) {
+      if (!item || !item.short_url || !item.target) continue;
+      if (!/\/passport\/web\/scan_index\//.test(item.target)) continue;
+      const token = tokenOf(item.target);
+      if (!token) continue;
+      this.shortByToken.set(token, item.short_url);
+      while (this.shortByToken.size > 10) this.shortByToken.delete(this.shortByToken.keys().next().value);
+      if (token === this.token) this._setUrl(item.short_url, 'cdp', token);
+    }
+  }
+
   async _scanScreen() {
     if (!this.active || this.scanning || this.source === 'cdp' || this.wc.isDestroyed()) return;
+    if (Date.now() < this.scanNotBefore) return;
     this.scanning = true;
     try {
-      const image = await this.wc.capturePage();
+      // capturePage can stall while the page navigates; never let it block scanning
+      const image = await Promise.race([
+        this.wc.capturePage(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('capture timeout')), 4000)),
+      ]);
       const bitmap = image.toBitmap(); // BGRA
       let { width, height } = image.getSize();
       if (!width || !height || !bitmap.length) return;
@@ -143,3 +200,11 @@ class QrWatcher {
 }
 
 module.exports = { QrWatcher };
+
+function tokenOf(url) {
+  try {
+    return new URL(url).searchParams.get('token');
+  } catch {
+    return null;
+  }
+}

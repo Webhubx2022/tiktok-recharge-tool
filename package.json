@@ -1,7 +1,7 @@
 {
   "name": "tt-recharge",
   "productName": "TT Recharge",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "أداة شحن عملات تيك توك مع جلسة منفصلة ومحفوظة لكل عميل",
   "main": "src/main/main.js",
   "private": true,
@@ -9,7 +9,8 @@
     "start": "electron .",
     "pack": "electron-builder --win --dir",
     "dist": "electron-builder --win nsis",
-    "test": "node tests/card-fill.test.js"
+    "test": "node tests/card-fill.test.js",
+    "test:qr": "node tests/qr-link.test.js"
   },
   "build": {
     "appId": "sd.matrix.ttrecharge",
