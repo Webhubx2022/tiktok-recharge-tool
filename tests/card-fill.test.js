@@ -21,7 +21,9 @@ const readFrames = (app) => app.evaluate(({ webContents }) => {
   const wc = webContents.getAllWebContents().find((w) => /tests\/pages\//.test(w.getURL()));
   return Promise.all(wc.mainFrame.framesInSubtree.map((f) => f.executeJavaScript(`({
     page: location.pathname.split('/').pop(),
-    focused: document.hasFocus() && document.activeElement && document.activeElement.tagName !== 'BODY'
+    // activeElement, not document.hasFocus(): hasFocus() is false whenever another
+    // window is in front of the test, which says nothing about where the cursor is.
+    focused: document.activeElement && document.activeElement.tagName !== 'BODY'
       ? (document.activeElement.id || document.title) : null,
     values: Object.fromEntries([...document.querySelectorAll('input,select')].map((e) => [e.id || document.title, e.value])),
   })`)));

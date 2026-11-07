@@ -113,7 +113,15 @@ async function pointFor(field) {
   return pt;
 }
 
+// Cross-origin frames sometimes take a moment to accept focus: try twice.
 async function focusField(wc, field) {
+  if (await focusOnce(wc, field)) return true;
+  await delay(250);
+  if (!wc.isFocused()) wc.focus();
+  return focusOnce(wc, field);
+}
+
+async function focusOnce(wc, field) {
   await field.frame.executeJavaScript(`(() => {
     const el = ${elExpr(field.key)}; if (!el) return;
     el.scrollIntoView({ block: 'center', inline: 'nearest' }); el.focus();

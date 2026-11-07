@@ -121,7 +121,10 @@ function openModal({ title, content, actions = [], wide = false, onClose }) {
   document.addEventListener('keydown', onKey);
   $('#modal-root').append(back);
   pushOverlay();
-  setTimeout(() => $('input:not([readonly]),textarea,select', body)?.focus(), 30);
+  // focus the first field, unless the user already clicked into the dialog
+  setTimeout(() => {
+    if (!back.contains(document.activeElement)) $('input:not([readonly]),textarea,select', body)?.focus();
+  }, 30);
   return { close, body };
 }
 
