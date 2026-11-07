@@ -1,0 +1,11 @@
+<!doctype html><html><body style="font-family:sans-serif;padding:20px">
+<h3>Checkout B (selects)</h3>
+<input autocomplete="cc-number" id="num" maxlength="19" placeholder="Card number"><br><br>
+<select id="mm" name="expiryMonth"><option value="">MM</option><option>01</option><option>02</option><option>03</option><option>04</option><option>05</option><option>06</option><option>07</option><option>08</option><option>09</option><option>10</option><option>11</option><option>12</option></select>
+<select id="yy" name="expiryYear"><option value="">YYYY</option><option>2026</option><option>2027</option><option>2028</option><option>2029</option><option>2030</option><option>2031</option></select><br><br>
+<input id="name" aria-label="Name on card"><br><br>
+<input id="cvv" name="cvv" maxlength="4">
+<script>
+  const n = document.getElementById('num');
+  n.addEventListener('input', () => { const d = n.value.replace(/\D/g,'').slice(0,16); n.value = d.replace(/(\d{4})(?=\d)/g, '$1 '); });
+</script></body></html>

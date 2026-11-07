@@ -1,0 +1,44 @@
+{
+  "name": "tt-recharge",
+  "productName": "TT Recharge",
+  "version": "1.0.0",
+  "description": "أداة شحن عملات تيك توك مع جلسة منفصلة ومحفوظة لكل عميل",
+  "main": "src/main/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --win --dir",
+    "dist": "electron-builder --win nsis",
+    "test": "node tests/card-fill.test.js"
+  },
+  "build": {
+    "appId": "sd.matrix.ttrecharge",
+    "productName": "TT Recharge",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "afterPack": "build/afterPack.js",
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "شحن تيك توك"
+    }
+  },
+  "dependencies": {
+    "jsqr": "1.4.0"
+  },
+  "devDependencies": {
+    "@electron/fuses": "1.8.0",
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8",
+    "playwright-core": "1.49.1"
+  }
+}

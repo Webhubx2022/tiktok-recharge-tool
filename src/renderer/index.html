@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' data: file:; style-src 'self'; script-src 'self'">
+  <title>أداة شحن عملات تيك توك</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <div class="brand">
+        <div class="logo">♪</div>
+        <div class="brand-text">
+          <strong>شحن تيك توك</strong>
+          <span id="stats" class="muted">—</span>
+        </div>
+        <button class="icon-btn" id="btn-lock" title="قفل التطبيق">🔒</button>
+      </div>
+
+      <button class="btn primary block" id="btn-new">＋ عميل جديد</button>
+      <input id="search" class="search" type="search" placeholder="بحث بالاسم، الرقم أو اليوزر…">
+
+      <div id="customer-list" class="customer-list"></div>
+
+      <div id="toasts"></div>
+
+      <div class="side-foot">
+        <button class="btn ghost sm" id="btn-tx">🧾 السجل</button>
+        <button class="btn ghost sm" id="btn-receipts">📁 الإيصالات</button>
+        <button class="btn ghost sm" id="btn-cards">💳 البطاقات</button>
+        <button class="btn ghost sm" id="btn-settings">⚙️ الإعدادات</button>
+      </div>
+    </aside>
+
+    <main id="main">
+      <div id="tabs" class="tabs"></div>
+
+      <div id="toolbar" class="toolbar" hidden>
+        <div class="tb-info">
+          <span id="tb-dot" class="dot"></span>
+          <strong id="tb-name"></strong>
+          <span id="tb-user" class="muted" dir="ltr"></span>
+          <span id="tb-status" class="pill"></span>
+        </div>
+        <div class="tb-actions">
+          <button class="btn ghost sm" id="tb-back" title="رجوع (Alt+←)">→ رجوع</button>
+          <button class="btn ghost sm" id="tb-reload" title="تحديث (F5)">⟳ تحديث</button>
+          <button class="btn ghost sm" id="tb-coin">🪙 صفحة الشحن</button>
+          <button class="btn card sm" id="tb-fill" title="تعبئة بيانات البطاقة في صفحة الدفع">💳 تعبئة البطاقة (F3)</button>
+          <button class="btn accent sm" id="tb-capture" title="F2">📸 لقطة (F2)</button>
+          <button class="btn ghost sm" id="tb-edit">✏️ بيانات العميل</button>
+        </div>
+      </div>
+
+      <div id="qrbar" class="qrbar" hidden>
+        <div class="qr-text">
+          <strong>🔑 تسجيل دخول العميل</strong>
+          <span id="qr-status" class="muted"></span>
+        </div>
+        <input id="qr-url" class="qr-url" dir="ltr" readonly placeholder="جاري تجهيز رابط الدخول…">
+        <button class="btn sm" id="qr-copy">📋 نسخ الرابط</button>
+        <button class="btn wa sm" id="qr-wa">💬 إرسال واتساب</button>
+        <button class="btn ghost sm" id="qr-new" title="طلب رمز جديد">⟳ رمز جديد</button>
+      </div>
+
+      <div id="viewport" class="viewport">
+        <div id="empty" class="empty">
+          <div class="empty-card">
+            <h2>كيف تعمل الأداة؟</h2>
+            <ol>
+              <li><b>عميل جديد:</b> اضغط «＋ عميل جديد» واكتب اسمه ورقمه.</li>
+              <li>يظهر <b>رابط الدخول</b> تلقائياً — أرسله للعميل بزر «💬 إرسال واتساب».</li>
+              <li>العميل يفتح الرابط ويوافق (وإذا طُلب رمز تأكيد اكتبه في الصفحة).</li>
+              <li>تفتح <b>صفحة الشحن</b> تلقائياً — اختر الباقة واضغط «الشحن»، ثم <b>💳 تعبئة البطاقة</b> أو <kbd>F3</kbd> واكتب CVV فقط.</li>
+              <li>عند ظهور «اكتمل الشراء» تُحفظ <b>لقطة الإيصال</b> وتُنسخ — الصقها في واتساب بـ <kbd>Ctrl</kbd>+<kbd>V</kbd>.</li>
+            </ol>
+            <p class="muted">العميل الراجع: اضغط على اسمه فقط — حسابه محفوظ ولا يحتاج QR مرة أخرى.</p>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="modal-root"></div>
+
+  <div id="lock" class="lock" hidden>
+    <div class="lock-card">
+      <div class="logo big">♪</div>
+      <h2 id="lock-title">أداة شحن عملات تيك توك</h2>
+      <p id="lock-hint" class="muted"></p>
+      <form id="lock-form" autocomplete="off">
+        <input id="lock-pin" type="password" inputmode="numeric" maxlength="8" placeholder="رمز PIN" dir="ltr">
+        <input id="lock-pin2" type="password" inputmode="numeric" maxlength="8" placeholder="تأكيد رمز PIN" dir="ltr" hidden>
+        <button class="btn primary block" type="submit" id="lock-submit">دخول</button>
+      </form>
+      <p id="lock-error" class="error"></p>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

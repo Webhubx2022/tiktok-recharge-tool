@@ -1,0 +1,10 @@
+<!doctype html><html><body style="font-family:sans-serif;padding:20px">
+<h3>Checkout A (iframes + auto-format)</h3>
+<label>Cardholder name <input id="holder" name="holderName"></label><br><br>
+Card: <iframe name="num-frame" src="num.html" style="width:260px;height:40px"></iframe><br><br>
+<label>Expiry <input id="exp" placeholder="MM/YY" maxlength="5"></label><br><br>
+CVV: <iframe src="cvc.html" style="width:120px;height:40px"></iframe>
+<script>
+  const e = document.getElementById('exp');
+  e.addEventListener('input', () => { const d = e.value.replace(/\D/g,'').slice(0,4); e.value = d.length > 2 ? d.slice(0,2) + '/' + d.slice(2) : d; });
+</script></body></html>
