@@ -1,0 +1,44 @@
+name: Build & Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build installer
+        run: npm run dist -- --publish never
+
+      - name: Version + release notes from CHANGELOG
+        id: meta
+        shell: bash
+        run: |
+          V=$(node -p "require('./package.json').version")
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          node -e "
+            const t=require('fs').readFileSync('CHANGELOG.md','utf8');
+            const m=t.split(/^## /m).find(s=>s.startsWith('$V'));
+            require('fs').writeFileSync('notes.md', m ? m.split('\n').slice(1).join('\n').trim() : '');
+          "
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.meta.outputs.version }}
+          name: TT Recharge ${{ steps.meta.outputs.version }}
+          body_path: notes.md
+          files: dist/*.exe
