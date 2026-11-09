@@ -62,6 +62,8 @@ function init() {
     },
   });
   win.once('ready-to-show', () => {
+    // automated tests open the window without taking focus from the user's work
+    if (process.env.TT_TEST_INACTIVE === '1') return win.showInactive();
     win.maximize();
     win.show();
   });
@@ -483,18 +485,39 @@ async function fillCardIn(tab, cardId, preferredWc) {
   filling = true;
   try {
     const res = await cardfill.fillCard(targets, card);
+    const reportFile = res.ok && !res.failed.length ? null : await saveFillReport(res);
+    const reportHint = reportFile ? `\n📄 وصف الخانات (بدون أي بيانات) حُفظ في: ${reportFile} — أرسله للمطوّر لإصلاح التعرّف` : '';
     if (!res.ok) {
-      toast('لم أجد نموذج البطاقة في الصفحة — اضغط «الشحن» أولاً حتى تظهر خانات البطاقة، أو اضغط داخل الخانة واستخدم Alt+1 / Alt+2 / Alt+3', 'warn');
+      toast(`لم أجد نموذج البطاقة في الصفحة — اضغط «الشحن» أولاً حتى تظهر خانات البطاقة، أو اضغط داخل الخانة واستخدم Alt+1 / Alt+2 / Alt+3${reportHint}`, 'warn');
     } else {
       const parts = [];
       if (res.filled.length) parts.push(`✅ تمت تعبئة: ${res.filled.join('، ')}`);
       if (res.failed.length) parts.push(`⚠️ لم تكتمل: ${res.failed.join('، ')} (اضغط في الخانة ثم Alt+1 رقم / Alt+2 تاريخ / Alt+3 اسم)`);
       parts.push(res.cvcFocused ? '⌨️ اكتب رمز CVV الآن' : '⌨️ اكتب رمز CVV');
-      toast(parts.join('\n'), res.failed.length ? 'warn' : 'ok');
+      toast(parts.join('\n') + reportHint, res.failed.length ? 'warn' : 'ok');
     }
-    return res;
+    return { ok: res.ok, filled: res.filled, failed: res.failed, cvcFocused: res.cvcFocused };
   } finally {
     filling = false;
+  }
+}
+
+// Value-free description of the payment form, to fix field recognition later.
+async function saveFillReport(res) {
+  try {
+    const file = path.join(app.getPath('documents'), 'TT Recharge', 'fill-report.json');
+    await fs.promises.mkdir(path.dirname(file), { recursive: true });
+    const body = {
+      app: app.getVersion(),
+      at: new Date().toISOString(),
+      filled: res.filled,
+      failed: res.failed,
+      frames: res.report,
+    };
+    await fs.promises.writeFile(file, JSON.stringify(body, null, 2), 'utf8');
+    return file;
+  } catch {
+    return null;
   }
 }
 

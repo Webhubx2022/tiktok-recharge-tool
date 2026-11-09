@@ -6,50 +6,84 @@
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Runs inside every frame: tags recognisable card fields and describes them.
+// It also returns a value-free description of every field (`all`), saved for
+// diagnosis when a form is not recognised.
+//
+// What a field is comes from, in order: its attributes, its <label>, the text
+// written next to it in its own container (TikTok's form puts "Card number"
+// in a plain div above the input), and its placeholder ("1234 3213 2313 3213").
+// Inputs inside open shadow roots are included.
 const FRAME_SCAN = `(() => {
   const RX = {
-    number: /cc-?number|card.?num|encryptedcardnumber|card no\\b|card #|رقم البطاقة|رقم الكرت|رقم الكارت/i,
+    number: /cc-?number|card.?num|encryptedcardnumber|card no\\b|card #|رقم البطاقة|رقم الكرت|رقم الكارت|numéro de carte|número de tarjeta/i,
     cvc: /cc-?csc|cvv|cvc|cvn|security.?code|card.?code|encryptedsecuritycode|رمز الأمان|الرمز السري|رمز التحقق/i,
     expMonth: /cc-?exp-?month|exp(iry|iration)?.?month|encryptedexpirymonth|شهر الانتهاء/i,
     expYear: /cc-?exp-?year|exp(iry|iration)?.?year|encryptedexpiryyear|سنة الانتهاء/i,
     exp: /cc-?exp|expir|exp.?date|valid.?thru|mm\\s*\\/\\s*yy|تاريخ الانتهاء|انتهاء الصلاحية|صالحة حتى|تاريخ الصلاحية/i,
     name: /cc-?name|card.?holder|holder.?name|name.?on.?card|اسم حامل|الاسم على البطاقة|اسم صاحب البطاقة/i,
+    postal: /postal|zip|post.?code|الرمز البريدي/i,
   };
-  const ORDER = ['number', 'cvc', 'expMonth', 'expYear', 'exp', 'name'];
+  const ORDER = ['number', 'cvc', 'expMonth', 'expYear', 'exp', 'name', 'postal'];
   const SKIP = ['hidden', 'checkbox', 'radio', 'submit', 'button', 'image', 'file', 'email', 'search', 'range', 'color'];
+  const deepInputs = (root, acc = []) => {
+    root.querySelectorAll('input, select').forEach((el) => acc.push(el));
+    root.querySelectorAll('*').forEach((n) => { if (n.shadowRoot) deepInputs(n.shadowRoot, acc); });
+    return acc;
+  };
   const visible = (el) => {
-    if (el.disabled || el.readOnly) return false;
+    if (el.disabled) return false;
     const r = el.getBoundingClientRect();
     if (r.width < 4 || r.height < 4) return false;
     const s = getComputedStyle(el);
     return s.visibility !== 'hidden' && s.display !== 'none';
   };
   const labelText = (el) => {
+    const root = el.getRootNode();
     let t = '';
-    if (el.id) {
-      const l = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
+    if (el.id && root.querySelector) {
+      const l = root.querySelector('label[for="' + CSS.escape(el.id) + '"]');
       if (l) t += ' ' + l.innerText;
     }
     const pl = el.closest('label');
     if (pl) t += ' ' + pl.innerText;
     const lb = el.getAttribute('aria-labelledby');
-    if (lb) lb.split(/\\s+/).forEach((id) => { const n = document.getElementById(id); if (n) t += ' ' + n.innerText; });
+    if (lb && root.getElementById) lb.split(/\\s+/).forEach((id) => { const n = root.getElementById(id); if (n) t += ' ' + n.innerText; });
     return t;
   };
-  const els = [...document.querySelectorAll('input, select')]
-    .filter((el) => !SKIP.includes((el.type || '').toLowerCase()) && visible(el));
+  // text of the smallest container that holds this input and no other one
+  const nearText = (el) => {
+    let n = el;
+    for (let i = 0; i < 4 && n.parentElement; i++) {
+      n = n.parentElement;
+      if (n.querySelectorAll('input, select').length > 1) break;
+      const t = (n.innerText || '').trim();
+      if (t) return t.slice(0, 80);
+    }
+    return '';
+  };
+  const els = deepInputs(document).filter((el) => !SKIP.includes((el.type || '').toLowerCase()) && visible(el));
   const out = [];
+  const all = [];
   els.forEach((el) => {
+    const near = nearText(el);
     let text = [
       el.getAttribute('autocomplete'), el.name, el.id, el.placeholder,
       el.getAttribute('aria-label'), el.getAttribute('data-fieldtype'), el.getAttribute('data-testid'),
       el.getAttribute('data-elements-stable-field-name'), typeof el.className === 'string' ? el.className : '',
-      labelText(el),
+      labelText(el), near,
     ].filter(Boolean).join(' ');
+    if (/^\\s*\\d{4}[\\s-]+\\d{4}[\\s-]+\\d{4}/.test(el.placeholder || '')) text += ' card-number';
     // A provider iframe often holds a single bare input: use the frame's own title / name / url.
     if (els.length === 1) text += ' ' + document.title + ' ' + window.name + ' ' + location.href;
-    const kind = ORDER.find((k) => RX[k].test(text));
-    if (!kind) return;
+    const kind = ORDER.find((k) => RX[k].test(text)) || null;
+    all.push({
+      kind,
+      tag: el.tagName.toLowerCase(), type: el.type || '', name: el.name || '', id: el.id || '',
+      placeholder: el.placeholder || '', autocomplete: el.getAttribute('autocomplete') || '',
+      ariaLabel: el.getAttribute('aria-label') || '', maxLength: el.maxLength > 0 ? el.maxLength : null,
+      readOnly: !!el.readOnly, inShadow: el.getRootNode() !== document, near,
+    });
+    if (!kind || kind === 'postal') return;
     const key = 'f' + Math.random().toString(36).slice(2, 10);
     el.setAttribute('data-ttfill', key);
     out.push({
@@ -59,29 +93,48 @@ const FRAME_SCAN = `(() => {
       placeholder: el.placeholder || '',
     });
   });
-  return out;
+  return { fields: out, all };
 })()`;
 
-const elExpr = (key) => `document.querySelector('[data-ttfill="${key}"]')`;
+// Finds a tagged field, also inside open shadow roots.
+const elExpr = (key) => `((k) => {
+  const walk = (root) => {
+    const hit = root.querySelector('[data-ttfill="' + k + '"]');
+    if (hit) return hit;
+    for (const n of root.querySelectorAll('*')) if (n.shadowRoot) { const r = walk(n.shadowRoot); if (r) return r; }
+    return null;
+  };
+  return walk(document);
+})(${JSON.stringify(key)})`;
 
+// Scans every frame; `report` describes all fields found (no values).
 async function scan(wc) {
   const fields = [];
+  const report = [];
   for (const frame of wc.mainFrame.framesInSubtree) {
     if (!/^(https?|file):/.test(frame.url)) continue;
     try {
-      const found = await frame.executeJavaScript(FRAME_SCAN);
-      for (const f of found) fields.push({ ...f, frame });
+      const res = await frame.executeJavaScript(FRAME_SCAN);
+      for (const f of res.fields) fields.push({ ...f, frame });
+      let origin = frame.url;
+      try { origin = new URL(frame.url).origin; } catch { /* keep */ }
+      if (res.all.length) report.push({ frame: origin, fields: res.all });
     } catch {
       // frame navigated or not scriptable
     }
   }
-  return fields;
+  return { fields, report };
 }
 
-function isFocused(field) {
-  return field.frame.executeJavaScript(
-    `document.hasFocus() && !!document.activeElement && document.activeElement.getAttribute('data-ttfill') === '${field.key}'`
-  ).catch(() => false);
+// When the window itself is not in front, document.hasFocus() is false in every
+// frame, so only the element focus inside the frame can be checked.
+function isFocused(wc, field) {
+  const strict = wc.isFocused();
+  return field.frame.executeJavaScript(`(() => {
+    let a = document.activeElement;
+    while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement;
+    return (${strict} ? document.hasFocus() : true) && !!a && a.getAttribute('data-ttfill') === ${JSON.stringify(field.key)};
+  })()`).catch(() => false);
 }
 
 // Centre of the field in the page's coordinates, walking up through iframes.
@@ -127,7 +180,7 @@ async function focusOnce(wc, field) {
     el.scrollIntoView({ block: 'center', inline: 'nearest' }); el.focus();
   })()`).catch(() => {});
   await delay(80);
-  if (await isFocused(field)) return true;
+  if (await isFocused(wc, field)) return true;
   // Some providers only accept focus from a real click.
   const pt = await pointFor(field);
   if (!pt) return false;
@@ -137,7 +190,7 @@ async function focusOnce(wc, field) {
   wc.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 });
   wc.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 });
   await delay(150);
-  return isFocused(field);
+  return isFocused(wc, field);
 }
 
 // Types into whatever element currently has focus in wc, key by key.
@@ -212,28 +265,41 @@ async function fillPart(wc, field, kind, card) {
 }
 
 /**
- * Fill `card` into the first of `targets` (webContents) that shows a card form.
- * Returns { ok, filled: string[], failed: string[], cvcFocused }.
+ * Fill `card` into the target (webContents) that shows the most card fields.
+ * A form is filled even when one field is not recognised; the others still go in.
+ * Returns { ok, filled: string[], failed: string[], cvcFocused, report }, where
+ * `report` describes every field seen in every target (no values).
  */
 async function fillCard(targets, card) {
+  let best = null;
+  const report = [];
   for (const wc of targets) {
     if (!wc || wc.isDestroyed()) continue;
-    const fields = await scan(wc);
-    const first = (k) => fields.find((f) => f.kind === k);
-    const number = first('number');
-    if (!number) continue;
+    const res = await scan(wc);
+    report.push(...res.report);
+    if (res.fields.length && (!best || res.fields.length > best.fields.length)) best = { wc, fields: res.fields };
+  }
+  if (!best) return { ok: false, filled: [], failed: [], cvcFocused: false, report };
 
-    wc.focus();
-    const filled = [];
-    const failed = [];
-    const mark = (ok, label) => (ok ? filled : failed).push(label);
+  const { wc, fields } = best;
+  const first = (k) => fields.find((f) => f.kind === k);
+  wc.focus();
+  const filled = [];
+  const failed = [];
+  const mark = (ok, label) => (ok ? filled : failed).push(label);
 
+  const number = first('number');
+  if (number) {
     let ok = await typeField(wc, number, card.number, card.number);
     if (!ok) {
       // some fields want the number in groups of four
       ok = await typeField(wc, number, card.number.replace(/(\d{4})(?=\d)/g, '$1 '), card.number);
     }
     mark(ok, 'رقم البطاقة');
+  } else {
+    failed.push('رقم البطاقة (لم يُعثر على الحقل)');
+  }
+  {
 
     const exp = first('exp');
     const month = first('expMonth');
@@ -249,9 +315,8 @@ async function fillCard(targets, card) {
 
     const cvc = first('cvc');
     const cvcFocused = cvc ? await focusField(wc, cvc) : false;
-    return { ok: true, filled, failed, cvcFocused };
+    return { ok: true, filled, failed, cvcFocused, report };
   }
-  return { ok: false, filled: [], failed: [], cvcFocused: false };
 }
 
 module.exports = { fillCard, typeKeys };

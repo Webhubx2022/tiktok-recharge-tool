@@ -1,0 +1,32 @@
+<!doctype html><html><head><title>Payment</title>
+<style>
+  body { font-family: sans-serif; margin: 16px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 24px; }
+  .lbl { font-size: 14px; margin-bottom: 6px; }
+  input { width: 100%; box-sizing: border-box; padding: 8px; background: #f1f1f1; border: 1px solid #ddd; }
+</style></head>
+<body>
+<!-- Labels are plain divs, inputs carry no names: like TikTok's card form -->
+<div class="grid">
+  <div><div class="lbl">Card number</div><div><input id="n1" placeholder="1234 3213 2313 3213" inputmode="numeric"></div></div>
+  <div><div class="lbl">Cardholder name</div><div id="name-host"></div></div>
+  <div><div class="lbl">Expiration date</div><div><input id="e1" placeholder="MM/YY"></div></div>
+  <div><div class="lbl">Security code</div><div><input id="c1" placeholder="CVV/CVC" readonly></div></div>
+  <div><div class="lbl">Postal code (Optional)</div><div><input id="p1" placeholder="12345"></div></div>
+</div>
+<script>
+  // card number auto-groups in fours
+  const n = document.getElementById('n1');
+  n.addEventListener('input', () => { const d = n.value.replace(/\D/g, '').slice(0, 19); n.value = d.replace(/(\d{4})(?=\d)/g, '$1 '); });
+  // expiry auto-inserts the slash
+  const e = document.getElementById('e1');
+  e.addEventListener('input', () => { const d = e.value.replace(/\D/g, '').slice(0, 4); e.value = d.length > 2 ? d.slice(0, 2) + '/' + d.slice(2) : d; });
+  // CVV is read-only until focused (anti-autofill trick)
+  const c = document.getElementById('c1');
+  c.addEventListener('focus', () => c.removeAttribute('readonly'));
+  // cardholder name lives in a web component (shadow DOM)
+  const host = document.getElementById('name-host');
+  const root = host.attachShadow({ mode: 'open' });
+  root.innerHTML = '<input id="h1" placeholder="Cardholder name" style="width:100%;box-sizing:border-box;padding:8px">';
+</script>
+</body></html>

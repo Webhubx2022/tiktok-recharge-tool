@@ -25,7 +25,11 @@ const readFrames = (app) => app.evaluate(({ webContents }) => {
     // window is in front of the test, which says nothing about where the cursor is.
     focused: document.activeElement && document.activeElement.tagName !== 'BODY'
       ? (document.activeElement.id || document.title) : null,
-    values: Object.fromEntries([...document.querySelectorAll('input,select')].map((e) => [e.id || document.title, e.value])),
+    values: Object.fromEntries((function deep(root, acc) {
+      root.querySelectorAll('input,select').forEach((e) => acc.push(e));
+      root.querySelectorAll('*').forEach((n) => n.shadowRoot && deep(n.shadowRoot, acc));
+      return acc;
+    })(document, []).map((e) => [e.id || document.title, e.value])),
   })`)));
 });
 
@@ -47,7 +51,7 @@ async function openPage(app, file) {
   const app = await electron.launch({
     executablePath: ELECTRON,
     args: [ROOT],
-    env: { ...process.env, TT_USER_DATA: UD, TT_FILL_ANY_HOST: '1' },
+    env: { ...process.env, TT_USER_DATA: UD, TT_FILL_ANY_HOST: '1', TT_TEST_INACTIVE: '1' },
   });
   const page = await app.firstWindow();
   try {
@@ -102,6 +106,19 @@ async function openPage(app, file) {
     check('B: year select', b.values.yy === '2030');
     check('B: name', b.values.name === 'TEST USER');
     check('B: CVV focused', b.focused === 'cvv');
+
+    // C: TikTok-like form: plain-div labels, digit placeholder, shadow-DOM name,
+    // read-only CVV until focused, optional postal code left alone
+    await openPage(app, 'c.html');
+    await page.click('#tb-fill');
+    await page.waitForTimeout(4500);
+    frames = await readFrames(app);
+    const c = frames.find((f) => f.page === 'pay-c.html');
+    check('C: number (label in a div above)', c?.values.n1 === '4242 4242 4242 4242', c?.values.n1);
+    check('C: expiry', c?.values.e1 === '12/30', c?.values.e1);
+    check('C: name inside shadow DOM', c?.values.h1 === 'TEST USER', c?.values.h1);
+    check('C: postal code untouched', c?.values.p1 === '');
+    check('C: CVV focused', c?.focused === 'c1', c?.focused);
   } catch (err) {
     console.log('ERROR', err);
     failures += 1;
