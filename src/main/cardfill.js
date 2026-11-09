@@ -166,7 +166,11 @@ async function pointFor(field) {
   return pt;
 }
 
-// Cross-origin frames sometimes take a moment to accept focus: try twice.
+// Focus a field so that keystrokes reach it.
+// A payment provider's iframe (e.g. pay-my.pipopay.com inside tiktok.com) runs
+// in its own process: el.focus() from script moves the caret there, but the
+// browser keeps sending keys to the top page. A real mouse click at the field
+// makes the browser hand the keyboard to that frame, so a click comes first.
 async function focusField(wc, field) {
   if (await focusOnce(wc, field)) return true;
   await delay(250);
@@ -176,21 +180,38 @@ async function focusField(wc, field) {
 
 async function focusOnce(wc, field) {
   await field.frame.executeJavaScript(`(() => {
-    const el = ${elExpr(field.key)}; if (!el) return;
-    el.scrollIntoView({ block: 'center', inline: 'nearest' }); el.focus();
+    const el = ${elExpr(field.key)}; if (el) el.scrollIntoView({ block: 'center', inline: 'nearest' });
   })()`).catch(() => {});
-  await delay(80);
-  if (await isFocused(wc, field)) return true;
-  // Some providers only accept focus from a real click.
+  await delay(60);
   const pt = await pointFor(field);
-  if (!pt) return false;
-  const x = Math.round(pt.x);
-  const y = Math.round(pt.y);
-  wc.sendInputEvent({ type: 'mouseMove', x, y });
-  wc.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 });
-  wc.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 });
-  await delay(150);
+  if (pt) {
+    const x = Math.round(pt.x);
+    const y = Math.round(pt.y);
+    wc.sendInputEvent({ type: 'mouseMove', x, y });
+    wc.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 });
+    wc.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 });
+    await delay(150);
+    if (await isFocused(wc, field)) return true;
+  }
+  await field.frame.executeJavaScript(`(() => { const el = ${elExpr(field.key)}; if (el) el.focus(); })()`).catch(() => {});
+  await delay(80);
   return isFocused(wc, field);
+}
+
+// Last resort: write the value from inside the field's own frame, the way
+// framework-controlled inputs (React, Vue, input masks) expect it.
+function setValueInFrame(field, text) {
+  return field.frame.executeJavaScript(`(() => {
+    const el = ${elExpr(field.key)}; if (!el) return false;
+    const v = ${JSON.stringify(text)};
+    el.focus();
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v);
+    el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: v }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    el.dispatchEvent(new FocusEvent('blur'));
+    el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    return true;
+  })()`).catch(() => false);
 }
 
 // Types into whatever element currently has focus in wc, key by key.
@@ -214,15 +235,26 @@ function readValue(field) {
 }
 
 const digits = (s) => String(s).replace(/\D/g, '');
+const sameText = (a, b) => String(a).replace(/\s+/g, ' ').trim().toUpperCase() === String(b).replace(/\s+/g, ' ').trim().toUpperCase();
 
+/**
+ * Put `text` into `field` and confirm it by reading the value back.
+ * `expectDigits` set: the field must hold exactly those digits (formatting ignored).
+ * `expectDigits` null: the field must hold `text` (case and spacing ignored).
+ * Keystrokes first; if the value is not right, write it from inside the frame.
+ */
 async function typeField(wc, field, text, expectDigits) {
-  if (!(await focusField(wc, field))) return false;
-  wc.selectAll();
-  await delay(30);
-  await typeKeys(wc, text);
-  await delay(120);
-  if (!expectDigits) return true;
-  return digits(await readValue(field)) === expectDigits;
+  const ok = (v) => (expectDigits ? digits(v) === expectDigits : sameText(v, text));
+  if (await focusField(wc, field)) {
+    wc.selectAll();
+    await delay(30);
+    await typeKeys(wc, text);
+    await delay(150);
+    if (ok(await readValue(field))) return true;
+  }
+  await setValueInFrame(field, text);
+  await delay(150);
+  return ok(await readValue(field));
 }
 
 async function setSelect(field, candidates) {
@@ -247,9 +279,7 @@ async function fillExpiry(wc, field, card) {
   const long = /yyyy/i.test(field.placeholder) || field.maxLength === 7;
   const expect = long ? mm + yyyy : mm + yy;
   if (field.maxLength === 4) return typeField(wc, field, mm + yy, mm + yy);
-  if (await typeField(wc, field, long ? `${mm}/${yyyy}` : `${mm}/${yy}`, expect)) return true;
-  // auto-formatting fields that insert the slash themselves
-  return typeField(wc, field, expect, expect);
+  return typeField(wc, field, long ? `${mm}/${yyyy}` : `${mm}/${yy}`, expect);
 }
 
 async function fillPart(wc, field, kind, card) {
@@ -290,12 +320,7 @@ async function fillCard(targets, card) {
 
   const number = first('number');
   if (number) {
-    let ok = await typeField(wc, number, card.number, card.number);
-    if (!ok) {
-      // some fields want the number in groups of four
-      ok = await typeField(wc, number, card.number.replace(/(\d{4})(?=\d)/g, '$1 '), card.number);
-    }
-    mark(ok, 'رقم البطاقة');
+    mark(await typeField(wc, number, card.number, card.number), 'رقم البطاقة');
   } else {
     failed.push('رقم البطاقة (لم يُعثر على الحقل)');
   }

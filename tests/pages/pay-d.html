@@ -1,0 +1,23 @@
+<!doctype html><html><head><title>Payment</title>
+<style>
+  body { font-family: sans-serif; margin: 16px; direction: rtl; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 24px; }
+  .lbl { font-size: 14px; margin-bottom: 6px; }
+  input { width: 100%; box-sizing: border-box; padding: 8px; background: #f1f1f1; border: 1px solid #ddd; }
+</style></head>
+<body>
+<!-- Same field attributes as TikTok's provider form (pay-my.pipopay.com) -->
+<div class="grid">
+  <div><div class="lbl">رقم البطاقة</div><input name="card_number" autocomplete="cc-number" maxlength="23" placeholder="أدخل رقم البطاقة"></div>
+  <div><div class="lbl">اسم حامل البطاقة</div><input name="holder_name" autocomplete="cc-name" maxlength="100" placeholder="اسم حامل البطاقة"></div>
+  <div><div class="lbl">تاريخ نهاية الصلاحية</div><input name="expiration_date" autocomplete="cc-exp" placeholder="MM/YY"></div>
+  <div><div class="lbl">رمز الحماية</div><input name="cvv" autocomplete="cc-csc" maxlength="4" placeholder="CVV/CVC"></div>
+  <div><div class="lbl">الرمز البريدي (اختياري)</div><input name="billing_postal_code" placeholder="12345"></div>
+</div>
+<script>
+  const n = document.querySelector('[name=card_number]');
+  n.addEventListener('input', () => { const d = n.value.replace(/\D/g, '').slice(0, 19); n.value = d.replace(/(\d{4})(?=\d)/g, '$1 '); });
+  const e = document.querySelector('[name=expiration_date]');
+  e.addEventListener('input', () => { const d = e.value.replace(/\D/g, '').slice(0, 4); e.value = d.length > 2 ? d.slice(0, 2) + '/' + d.slice(2) : d; });
+</script>
+</body></html>

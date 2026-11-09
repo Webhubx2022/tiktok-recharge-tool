@@ -1,7 +1,25 @@
 // One persistent, isolated browser session (cookie jar) per customer.
-const { app, session } = require('electron');
+const { app, session, protocol, net } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
+
+// Tests only (TT_TEST_PAGES=<folder>): serve that folder as tttest://<host>/<file>
+// so a test page and its payment frame can be two different sites (tttest://shop
+// and tttest://pay), each in its own process like tiktok.com and its payment
+// provider, without any network server. Off unless the variable is set.
+const TEST_PAGES = process.env.TT_TEST_PAGES || '';
+if (TEST_PAGES) {
+  protocol.registerSchemesAsPrivileged([
+    { scheme: 'tttest', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  ]);
+}
+function serveTestPages(ses) {
+  ses.protocol.handle('tttest', (req) => {
+    const file = path.join(TEST_PAGES, path.basename(new URL(req.url).pathname));
+    return net.fetch(pathToFileURL(file).href);
+  });
+}
 
 const CHROME_MAJOR = process.versions.chrome.split('.')[0];
 const CHROME_UA =
@@ -26,6 +44,7 @@ function getSession(id) {
     ses.setPermissionRequestHandler((_wc, permission, callback) => {
       callback(ALLOWED_PERMISSIONS.has(permission));
     });
+    if (TEST_PAGES) serveTestPages(ses);
   }
   return ses;
 }
